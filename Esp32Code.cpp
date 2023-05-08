@@ -37,8 +37,8 @@ const char* password = "bingo123";
 #define RXD2 14
 #define TXD2 15
 
+//From ESP32 Cam Examples
 #define PART_BOUNDARY "123456789000000000000987654321"
-
 static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
@@ -47,12 +47,13 @@ httpd_handle_t camera_httpd = NULL;
 httpd_handle_t stream_httpd = NULL;
 
 
-
+// Index handler. Responsible for sending raw html and creating the webpage. 
 static esp_err_t index_handler(httpd_req_t *http_request){
   httpd_resp_set_type(http_request, "text/html");
-  return httpd_resp_send(http_request, (const char *)INDEX_HTML, strlen(INDEX_HTML));
+  return httpd_resp_send(http_request, (const char *)INDEX_HTML, strlen(INDEX_HTML));// send over the html from raw.cpp
 }
 
+//video stream handler. From ESP32 Examples
 static esp_err_t stream_handler(httpd_req_t *http_request){
   camera_fb_t * fb = NULL;
   esp_err_t res = ESP_OK;
@@ -112,30 +113,31 @@ static esp_err_t stream_handler(httpd_req_t *http_request){
   return res;
 }
 
+//comand handler for the webserver. This takes in the http rquest and parses it for data
 static esp_err_t cmd_handler(httpd_req_t *http_request){
-  char*  command_buffer;
-  size_t command_buffer_length;
+  char*  command_buffer;    //command buffer(url)
+  size_t command_buffer_length; //buffer lenght
   char variable[8] = {0,}; //html output buffer, size of 8.
   
   command_buffer_length = httpd_req_get_url_query_len(http_request); //returns 0 if query is not found in the request url
-  if (command_buffer_length >= 1) {
+  if (command_buffer_length > 0) { // if its greater than 0, we got valid data.
     command_buffer = (char*)malloc(command_buffer_length); //create command buffer to store the url query in
     if (httpd_req_get_url_query_str(http_request, command_buffer, command_buffer_length+1) == ESP_OK) { // fill the buffer with the url query
       httpd_query_key_value(command_buffer, "go", variable, sizeof(variable)) == ESP_OK)  // ESP_OK : Key is found in the URL query string and copied to buffer
     }
-    free(command_buffer);
+    free(command_buffer); // free buffer. Buffer can be giant so we need to manually alocate memory on the heap.
   } 
 
-  Serial.println(variable[0]);
-  Serial.println(variable[1]);
-  if (variable[0] == '0'){
-    Serial2.write(variable[0]);
-    Serial2.write(variable[1]);
-  }else if (variable[0] == '1'){
-    Serial2.write(variable[0]);
-    Serial2.write(variable[1]);
-  } else {
-    Serial2.write(variable[0]);
+  //Serial.println(variable); // print the array for testing purposes.
+
+  
+  if (variable[0] >= '0' && variable[0] <= 'Z')){ //if the first char which is the command falls with in this range, there is another char in the array that has the value.
+   
+    Serial2.write(variable[0]); // command char
+    Serial2.write(variable[1]); // value char
+    
+  } else { // else this is a single byte command. Just send var[0] which is one char.
+    Serial2.write(variable[0]); // comand char
   }
 
 
@@ -144,12 +146,13 @@ static esp_err_t cmd_handler(httpd_req_t *http_request){
 }
 
 void startCameraServer(){
+  //function to hook all handler functions to respective actions.
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80; // default webserver port
-  httpd_uri_t index_uri = {
+  httpd_uri_t index_uri = { // create uri, (webserver & socket)
     .uri       = "/",
     .method    = HTTP_GET,
-    .handler   = index_handler,
+    .handler   = index_handler, 
     .user_ctx  = NULL
   };
   httpd_uri_t cmd_uri = {
@@ -170,13 +173,13 @@ void startCameraServer(){
   }
   config.server_port += 1;
   config.ctrl_port += 1; // increment by one to start stream port, send over images. The HTML RAW is expecting the images to be sent over the 81 port.  
-  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-    httpd_register_uri_handler(stream_httpd, &stream_uri);
+  if (httpd_start(&stream_httpd, &config) == ESP_OK) { //attempts to hook stream
+    httpd_register_uri_handler(stream_httpd, &stream_uri); //connect stream up
   }
 }
 
 void setup() {  
-  Serial.begin(115200);
+  Serial.begin(115200); // usb serial used for debugging
 
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2); // serial for comm with arduino
   
